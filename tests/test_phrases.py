@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from recall.config import ROOT
-from recall.phrases import ListMatcher, build_catalog, normalize
+from recall.phrases import ListMatcher, build_catalog, normalize, why_set_aside
 from recall.rulesheet import load_rulesheet
 
 
@@ -68,3 +68,30 @@ def test_return_request_is_not_blocked_by_plan_wording(matcher):
 def test_one_hit_per_entry(matcher):
     hits = matcher.match("Shockwave session 1. Radial shockwave to heel. ESWT session documented.")
     assert [h.entry_id for h in hits] == ["SESSION_SHOCKWAVE"]
+
+
+@pytest.mark.parametrize("text, entry_id, cue", [
+    ("Patient declined shockwave session today; will reconsider.", "SESSION_SHOCKWAVE", "declined"),
+    ("No shockwave session today due to skin irritation.", "SESSION_SHOCKWAVE", "no"),
+    ("Plan: EMTT session next visit.", "SESSION_MAGNET", "plan"),
+    ("Consider shockwave session if no improvement.", "SESSION_SHOCKWAVE", "consider"),
+])
+def test_blocked_session_phrases_are_set_aside_with_the_blocking_word(matcher, text, entry_id, cue):
+    hits, set_aside = matcher.scan(text)
+    assert hits == []
+    assert [(h.entry_id, h.set_aside_by) for h in set_aside] == [(entry_id, cue)]
+
+
+def test_an_affirmed_mention_wins_over_a_blocked_one(matcher):
+    hits, set_aside = matcher.scan("Plan: shockwave session next week. Shockwave session 2 completed.")
+    assert [h.entry_id for h in hits] == ["SESSION_SHOCKWAVE"]
+    assert set_aside == []
+
+
+def test_only_session_phrases_are_set_aside(matcher):
+    assert matcher.scan("Declined follow up 2 weeks.") == ([], [])
+
+
+def test_the_reason_says_negated_or_planned():
+    assert why_set_aside("declined") == 'negated by "declined"'
+    assert why_set_aside("plan") == 'planned, not performed ("plan")'

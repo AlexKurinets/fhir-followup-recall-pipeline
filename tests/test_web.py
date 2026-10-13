@@ -145,3 +145,16 @@ def test_a_broken_rule_sheet_is_reported_not_crashed(web, settings, tmp_path, se
     client = TestClient(create_app(replace(settings, rules_path=rules), session_factory))
     assert "can't be loaded" in client.get("/").text
     assert "can't be loaded" in client.get("/rules").text
+
+
+def test_records_seen_but_not_counted_are_shown_with_the_reason(web):
+    start_run(web)
+    osei = web.get("/patients/p-0010").text
+    assert "Seen in the chart but not counted (1)" in osei
+    assert "negated by" in osei and "declined" in osei and "DocumentReference/doc-" in osei
+    pettigrew = web.get("/patients/p-0013").text
+    assert "Seen in the chart but not counted (1)" in pettigrew
+    assert "drug not on the injection list" in pettigrew and "MedicationAdministration/medadm-" in pettigrew
+    assert "Influenza" not in pettigrew  # the drug name is only shown when the source is opened
+    measures_page = web.get("/measures").text
+    assert "Wilhelmina Osei" in measures_page and "1 not counted" in measures_page

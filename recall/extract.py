@@ -2,7 +2,10 @@
 
 This is where minimum necessary is enforced in code: each function reads the handful of elements the
 rule sheet needs and returns nothing else. Resources that don't match a signed code, route or phrase
-produce no fact at all.
+produce no fact at all. The one exception is a near miss, which is kept as a NOT_COUNTED fact so staff can
+see why a count is lower than the chart suggests: a session phrase that is negated or only planned, or a
+drug outside the signed list given by a signed route. A near miss keeps the reason and the source
+reference only, never the note text or the drug name; opening the source fetches it live.
 """
 
 from __future__ import annotations
@@ -16,13 +19,14 @@ from .facts import (
     APPOINTMENT,
     CODED,
     CONDITION,
+    NOT_COUNTED,
     NOTE_MATCH,
     RETURN_REQUEST,
     VISIT,
     Fact,
     PatientRecord,
 )
-from .phrases import Matcher, MatcherError
+from .phrases import Matcher, MatcherError, why_set_aside
 from .rulesheet import RuleSheet
 
 EXT_BASE = "https://example.com/fhir/StructureDefinition/"
@@ -154,6 +158,13 @@ class Extractor:
                 self._keep(Fact(pid, modality.key, day, CODED, f"MedicationAdministration/{r['id']}",
                                 code=route.code, code_system=route.system,
                                 display=f"{drug.capitalize()}, {route.display.lower()}"), out)
+                return out
+        for modality in self.sheet.modalities.values():
+            route = next((c for c in modality.routes if c.code in route_codes), None)
+            if modality.medications and route:
+                self._keep(Fact(pid, NOT_COUNTED, day, CODED, f"MedicationAdministration/{r['id']}",
+                                code=modality.key, display=f"Medication given by {route.display.lower()}",
+                                detail=f"drug not on the {modality.label.lower()} list"), out)
                 break
         return out
 
@@ -183,7 +194,7 @@ class Extractor:
             return out
         self.stats.notes_scanned += 1
         try:
-            hits = self.matcher.match(text)
+            hits, set_aside = self.matcher.scan(text)
         except MatcherError:
             self.stats.matcher_errors += 1
             return out
@@ -194,6 +205,9 @@ class Extractor:
             kind = RETURN_REQUEST if hit.kind == RETURN_REQUEST else hit.kind
             self._keep(Fact(pid, kind, day, NOTE_MATCH, f"DocumentReference/{r['id']}", code=hit.entry_id,
                             display=f'Note: "{hit.phrase}"', detail=f"matcher={hit.matcher}"), out)
+        for hit in set_aside:
+            self._keep(Fact(pid, NOT_COUNTED, day, NOTE_MATCH, f"DocumentReference/{r['id']}", code=hit.kind,
+                            display=f'Note: "{hit.phrase}"', detail=why_set_aside(hit.set_aside_by)), out)
         return out
 
     def appointment(self, r: dict) -> list[Fact]:

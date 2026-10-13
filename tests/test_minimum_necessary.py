@@ -46,15 +46,40 @@ def test_extractor_ignores_fields_outside_the_map():
 
 def test_unlisted_codes_produce_no_facts():
     ex = Extractor(SHEET, ListMatcher(build_catalog(SHEET)))
+    oral_steroid = {"resourceType": "MedicationAdministration", "id": "m2", "status": "completed",
+                    "subject": {"reference": "Patient/p-1"}, "effectiveDateTime": "2026-09-01T10:00:00-04:00",
+                    "medicationCodeableConcept": {"text": "Methylprednisolone 4 mg tablet"},
+                    "dosage": {"route": {"coding": [{"code": "26643006"}]}}}
+    office_procedure = {"resourceType": "Procedure", "id": "x1", "status": "completed",
+                        "subject": {"reference": "Patient/p-1"}, "performedDateTime": "2026-09-01",
+                        "code": {"coding": [{"system": "http://www.ama-assn.org/go/cpt", "code": "97110"}]}}
+    assert ex.medication_administration(oral_steroid) == []
+    assert ex.procedure(office_procedure) == []
+
+
+def test_a_near_miss_keeps_the_reason_but_not_the_drug_name():
+    ex = Extractor(SHEET, ListMatcher(build_catalog(SHEET)))
     flu_shot = {"resourceType": "MedicationAdministration", "id": "m1", "status": "completed",
                 "subject": {"reference": "Patient/p-1"}, "effectiveDateTime": "2026-09-01T10:00:00-04:00",
                 "medicationCodeableConcept": {"text": "Influenza vaccine"},
                 "dosage": {"route": {"coding": [{"code": "78421000"}]}}}
-    office_procedure = {"resourceType": "Procedure", "id": "x1", "status": "completed",
-                        "subject": {"reference": "Patient/p-1"}, "performedDateTime": "2026-09-01",
-                        "code": {"coding": [{"system": "http://www.ama-assn.org/go/cpt", "code": "97110"}]}}
-    assert ex.medication_administration(flu_shot) == []
-    assert ex.procedure(office_procedure) == []
+    [fact] = ex.medication_administration(flu_shot)
+    assert (fact.kind, fact.code, fact.source_ref) == ("not_counted", "injection", "MedicationAdministration/m1")
+    assert fact.detail == "drug not on the injection list"
+    assert "influenza" not in repr(fact).lower() and "vaccine" not in repr(fact).lower()
+
+
+def test_a_negated_note_keeps_the_signed_phrase_and_the_blocking_word_only():
+    ex = Extractor(SHEET, ListMatcher(build_catalog(SHEET)))
+    text = "Patient declined shockwave session today because of a sunburn on the heel."
+    note = {"resourceType": "DocumentReference", "id": "d1", "subject": {"reference": "Patient/p-1"},
+            "date": "2026-09-01T10:00:00-04:00",
+            "content": [{"attachment": {"contentType": "text/plain",
+                                        "data": base64.b64encode(text.encode()).decode()}}]}
+    [fact] = ex.document_reference(note)
+    assert (fact.kind, fact.code, fact.display) == ("not_counted", "shockwave", 'Note: "shockwave session"')
+    assert fact.detail == 'negated by "declined"'
+    assert "sunburn" not in repr(fact)
 
 
 def test_note_text_is_never_stored(settings, session_factory, gateway, practice):

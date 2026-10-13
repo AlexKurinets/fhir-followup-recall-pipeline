@@ -17,6 +17,7 @@ from .facts import (
     CONDITION,
     EXPORT,
     FUTURE_STATUSES,
+    NOT_COUNTED,
     NOTE_MATCH,
     RETURN_REQUEST,
     VISIT,
@@ -69,6 +70,10 @@ class Measures:
     injections_12mo: list[Session]
     last_injection: Session | None
     last_visit: Fact | None
+    not_counted: list[Fact] = field(default_factory=list)   # near misses inside the same windows, newest first
+
+    def not_counted_for(self, modality: str) -> list[Fact]:
+        return [f for f in self.not_counted if f.code == modality]
 
     @property
     def last_shockwave(self) -> Session | None:
@@ -84,12 +89,24 @@ def measures(facts: list[Fact], sheet: RuleSheet, as_of: date) -> Measures:
     injections = sessions(facts, "injection")
     past = [s for s in injections if s.on <= as_of]
     v = [f for f in visits(facts) if f.on <= as_of]
+    counted = {
+        "shockwave": [s for s in sessions(facts, "shockwave") if s.on <= as_of],
+        "magnet": [s for s in sessions(facts, "magnet") if s.on <= as_of],
+        "injection": [s for s in past if window_start < s.on],
+    }
+    # A near miss on a day that already counts changes nothing, so it isn't shown.
+    counted_days = {(kind, s.on) for kind, ss in counted.items() for s in ss}
+    not_counted = sorted(
+        (f for f in facts if f.kind == NOT_COUNTED and f.is_citable and f.on <= as_of
+         and (f.code, f.on) not in counted_days and (f.code != "injection" or window_start < f.on)),
+        key=lambda f: (f.on, f.source_ref or ""), reverse=True)
     return Measures(
-        shockwave=[s for s in sessions(facts, "shockwave") if s.on <= as_of],
-        magnet=[s for s in sessions(facts, "magnet") if s.on <= as_of],
-        injections_12mo=[s for s in past if window_start < s.on],
+        shockwave=counted["shockwave"],
+        magnet=counted["magnet"],
+        injections_12mo=counted["injection"],
         last_injection=past[-1] if past else None,
         last_visit=v[-1] if v else None,
+        not_counted=not_counted,
     )
 
 

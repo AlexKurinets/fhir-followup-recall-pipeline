@@ -46,14 +46,14 @@
 {% if m %}
 <h2 style="margin:24px 0 12px">Treatment measures</h2>
 <div class="grid grid-4">
-  <div class="measure"><div class="label">Shockwave sessions</div><div class="value">{{ m.shockwave|length }}</div>
+  <div class="measure"><div class="label">Shockwave sessions</div><div class="value">{{ m.shockwave|length }}{{ ui.not_counted_badge(m.not_counted_for('shockwave')|length) }}</div>
     <div class="hint">{% if m.last_shockwave %}Last {{ m.last_shockwave.on|d }}{% else %}None on record{% endif %}
     {% set note_only = m.shockwave|selectattr('from_note_only')|list|length %}{% if note_only %} · {{ note_only }} from notes only{% endif %}</div></div>
-  <div class="measure"><div class="label">Magnetic therapy sessions</div><div class="value">{{ m.magnet|length }}</div>
+  <div class="measure"><div class="label">Magnetic therapy sessions</div><div class="value">{{ m.magnet|length }}{{ ui.not_counted_badge(m.not_counted_for('magnet')|length) }}</div>
     <div class="hint">{% if m.last_magnet %}Last {{ m.last_magnet.on|d }}{% else %}None on record{% endif %}</div></div>
   <div class="measure"><div class="label">Last visit</div><div class="value" style="font-size:22px;padding:5px 0 3px">{{ m.last_visit.on|d if m.last_visit else '—' }}</div>
     <div class="hint">{% if m.last_visit %}{{ (run.as_of - m.last_visit.on).days }} days ago · {{ m.last_visit.display }}{% else %}No finished encounter on record{% endif %}</div></div>
-  <div class="measure"><div class="label">Injections, last 12 months</div><div class="value">{{ m.injections_12mo|length }}</div>
+  <div class="measure"><div class="label">Injections, last 12 months</div><div class="value">{{ m.injections_12mo|length }}{{ ui.not_counted_badge(m.not_counted_for('injection')|length) }}</div>
     <div class="hint">{% if m.last_injection %}Last {{ m.last_injection.on|d }}{% else %}None on record{% endif %}</div></div>
 </div>
 
@@ -62,6 +62,11 @@
   <details open><summary>Injections ({{ m.injections_12mo|length }} in the last 12 months)</summary>{{ ui.session_table(m.injections_12mo) }}</details>
   <details {{ 'open' if m.shockwave }}><summary>Shockwave sessions ({{ m.shockwave|length }})</summary>{{ ui.session_table(m.shockwave) }}</details>
   <details {{ 'open' if m.magnet }}><summary>Magnetic therapy sessions ({{ m.magnet|length }})</summary>{{ ui.session_table(m.magnet) }}</details>
+  {% if m.not_counted %}
+  <details open><summary>Seen in the chart but not counted ({{ m.not_counted|length }})</summary>
+    <p class="secondary muted" style="margin:4px 0 8px">These looked like a session but didn't meet the rule sheet. Only the reason and a link are kept; open the source to read the record itself.</p>
+    {{ ui.not_counted_table(m.not_counted, sheet) }}</details>
+  {% endif %}
   <details><summary>Appointments ({{ appts|length }})</summary>{{ ui.fact_table(appts) }}</details>
 </div>
 {% endif %}

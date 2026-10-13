@@ -22,12 +22,12 @@
       <tr>
         <td class="nowrap"><a class="strong" href="/patients/{{ p.patient_id }}">{{ p.given_name }} {{ p.family_name }}</a><br><span class="secondary mono">{{ p.patient_id }}</span></td>
         <td class="secondary">{{ prov }}</td>
-        <td class="num strong">{{ m.shockwave|length }}{% if m.shockwave|selectattr('from_note_only')|list %}<span class="badge note_match" title="includes sessions found only in notes" style="margin-left:4px">note</span>{% endif %}</td>
+        <td class="num strong">{{ m.shockwave|length }}{% if m.shockwave|selectattr('from_note_only')|list %}<span class="badge note_match" title="includes sessions found only in notes" style="margin-left:4px">note</span>{% endif %}{{ ui.not_counted_badge(m.not_counted_for('shockwave')|length) }}</td>
         <td class="nowrap">{{ m.last_shockwave.on|d if m.last_shockwave else '—' }}</td>
-        <td class="num strong">{{ m.magnet|length }}</td>
+        <td class="num strong">{{ m.magnet|length }}{{ ui.not_counted_badge(m.not_counted_for('magnet')|length) }}</td>
         <td class="nowrap">{{ m.last_magnet.on|d if m.last_magnet else '—' }}</td>
         <td class="nowrap">{{ m.last_visit.on|d if m.last_visit else '—' }}</td>
-        <td class="num strong">{{ m.injections_12mo|length }}</td>
+        <td class="num strong">{{ m.injections_12mo|length }}{{ ui.not_counted_badge(m.not_counted_for('injection')|length) }}</td>
         <td class="nowrap">{{ m.last_injection.on|d if m.last_injection else '—' }}</td>
         <td>{% if flag %}{{ ui.priority(flag.priority) }}{% elif held %}<span class="badge grey">Held</span>{% else %}<span class="faint">—</span>{% endif %}</td>
       </tr>

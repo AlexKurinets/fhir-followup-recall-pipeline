@@ -4,7 +4,8 @@ Two matchers share one interface:
 
 * ``ListMatcher`` (default) normalizes the note and looks for each signed phrase, skipping hits that
   are negated ("declined shockwave session") or, for treatment sessions, only planned ("plan: EMTT
-  session next visit"). It is deterministic and runs offline.
+  session next visit"). It is deterministic and runs offline. Session phrases it skips are reported as
+  set aside, with the word that blocked them, so the dashboard can show what wasn't counted and why.
 * ``ClaudeMatcher`` sends the note to a model behind a BAA-covered endpoint and asks which catalog
   entries it documents. It returns entry ids from a closed list and nothing else, so the model can
   match a paraphrase but cannot invent a rule, a date or a sentence.
@@ -74,6 +75,11 @@ class PhraseHit:
     phrase: str
     matcher: str
     interval_days: int | None = None
+    set_aside_by: str | None = None   # the word that negated it or marked it as planned
+
+
+def why_set_aside(cue: str) -> str:
+    return f'negated by "{cue}"' if cue in NEGATORS else f'planned, not performed ("{cue}")'
 
 
 def build_catalog(sheet: RuleSheet) -> tuple[CatalogEntry, ...]:
@@ -94,6 +100,10 @@ class Matcher(Protocol):
 
     def match(self, text: str) -> list[PhraseHit]: ...
 
+    def scan(self, text: str) -> tuple[list[PhraseHit], list[PhraseHit]]:
+        """Matches, plus session phrases that were present but set aside as negated or planned."""
+        ...
+
 
 class MatcherError(RuntimeError):
     pass
@@ -107,20 +117,32 @@ class ListMatcher:
         self._compiled = [(e, [(p, normalize(p)) for p in e.phrases]) for e in catalog]
 
     def match(self, text: str) -> list[PhraseHit]:
+        return self.scan(text)[0]
+
+    def scan(self, text: str) -> tuple[list[PhraseHit], list[PhraseHit]]:
         tokens = normalize(text)
-        hits = []
+        hits, set_aside = [], []
         for entry, phrases in self._compiled:
+            blocked: tuple[str, str] | None = None
             for phrase, ptoks in phrases:
-                if self._affirmed_occurrence(tokens, ptoks, entry.requires_performed):
+                affirmed, cue = self._occurrence(tokens, ptoks, entry.requires_performed)
+                if affirmed:
                     hits.append(PhraseHit(entry.id, entry.kind, phrase, self.name, entry.interval_days))
+                    blocked = None
                     break
-        return hits
+                if cue and blocked is None:
+                    blocked = (phrase, cue)
+            if blocked and entry.requires_performed:
+                set_aside.append(PhraseHit(entry.id, entry.kind, blocked[0], self.name, set_aside_by=blocked[1]))
+        return hits, set_aside
 
     @staticmethod
-    def _affirmed_occurrence(tokens: list[str], ptoks: list[str], requires_performed: bool) -> bool:
+    def _occurrence(tokens: list[str], ptoks: list[str], requires_performed: bool) -> tuple[bool, str | None]:
+        """(True, None) for an affirmed occurrence; otherwise (False, the word that blocked the first one)."""
         n = len(ptoks)
         if n == 0:
-            return False
+            return False, None
+        first_cue = None
         for i in range(len(tokens) - n + 1):
             if tokens[i:i + n] != ptoks:
                 continue
@@ -129,12 +151,12 @@ class ListMatcher:
                 if t == ".":
                     break
                 window.append(t)
-            if NEGATORS.intersection(window):
-                continue
-            if requires_performed and NOT_PERFORMED.intersection(window):
-                continue
-            return True
-        return False
+            blockers = NEGATORS | NOT_PERFORMED if requires_performed else NEGATORS
+            cue = next((t for t in window if t in blockers), None)
+            if cue is None:
+                return True, None
+            first_cue = first_cue or cue
+        return False, first_cue
 
 
 CLAUDE_SYSTEM_PROMPT = """You review one outpatient clinical note at a time for a pain management and \
@@ -217,6 +239,10 @@ class ClaudeMatcher:
                 hits.append(PhraseHit(entry.id, entry.kind, entry.label, f"{self.name}:{self.model}",
                                       entry.interval_days))
         return hits
+
+    def scan(self, text: str) -> tuple[list[PhraseHit], list[PhraseHit]]:
+        # The model reports only what the note documents, so nothing is set aside here.
+        return self.match(text), []
 
 
 def build_matcher(name: str, sheet: RuleSheet, model: str) -> Matcher:

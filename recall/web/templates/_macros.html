@@ -53,3 +53,27 @@
 </table>
 </div>
 {%- endmacro %}
+
+
+{% macro not_counted_table(facts, sheet) -%}
+<div class="table-wrap">
+<table class="compact">
+  <thead><tr><th>Date</th><th>What was seen</th><th>Would count as</th><th>Why it doesn't count</th><th>Source</th></tr></thead>
+  <tbody>
+  {% for f in facts %}
+    <tr>
+      <td class="nowrap">{{ f.on|d }}</td>
+      <td>{{ f.display }}</td>
+      <td class="nowrap">{{ sheet.modalities[f.code].label if sheet and f.code in sheet.modalities else f.code }}</td>
+      <td>{{ f.detail }}</td>
+      <td>{{ evidence_chip(f) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{%- endmacro %}
+
+{% macro not_counted_badge(n) -%}
+  {%- if n %}<span class="badge grey" title="seen in the chart but not counted; open the patient for the reason" style="margin-left:4px">{{ n }} not counted</span>{% endif -%}
+{%- endmacro %}

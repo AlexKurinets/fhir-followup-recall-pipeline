@@ -59,6 +59,10 @@ def check_story(session, run_id: int, settings: Settings) -> list[str]:
             problems.append(f"{pid}: expected {exp['shockwave']} shockwave sessions, got {len(m.shockwave)}")
         if "magnet" in exp and len(m.magnet) != exp["magnet"]:
             problems.append(f"{pid}: expected {exp['magnet']} magnet sessions, got {len(m.magnet)}")
+        for modality, n in exp.get("not_counted", {}).items():
+            got = len(m.not_counted_for(modality))
+            if got != n:
+                problems.append(f"{pid}: expected {n} {modality} records seen but not counted, got {got}")
         if "note_only_sessions" in exp:
             got = sum(1 for s in m.shockwave if s.from_note_only)
             if got != exp["note_only_sessions"]:

@@ -23,8 +23,8 @@ docker compose down -v                                  # stop and discard all d
 |---|---|
 | Overview | The latest run: patients read, flagged, held back, dropped. Where each resource came from (FHIR or the staff export), the token's scopes and lifetime, and the run history with the rule-sheet hash each run used. |
 | Worklist | One row per patient, by priority and days overdue, split by provider. Each row shows the leading reason, any other reasons, the source records behind it, and SMS or call depending on consent. Downloadable as a CSV queue. |
-| Patient | The four measures (shockwave sessions, magnetic therapy sessions, last visit, injections in the last 12 months), every source record behind each one, why the patient is flagged, held back or dropped, an outreach-outcome form, and that patient's access log. |
-| Patient measures | The four measures for every patient, as a table and a CSV. |
+| Patient | The four measures (shockwave sessions, magnetic therapy sessions, last visit, injections in the last 12 months), every source record behind each one, any record that looked like a session but wasn't counted (and why), why the patient is flagged, held back or dropped, an outreach-outcome form, and that patient's access log. |
+| Patient measures | The four measures for every patient, as a table and a CSV, with a "not counted" tag where a record was seen but set aside. |
 | Rule sheet | The current rules in plain language, what counts as each treatment, the return-visit phrases, the suppressions, and the field map. Warns when the file has changed since the last run. |
 | Access log | Every read of patient data, by whom and when, including each source record opened from the dashboard. |
 | Pilot report | Flagged, held back, dropped, and outreach outcomes (reached, booked, declined, no answer, do-not-contact). |
@@ -85,6 +85,8 @@ The practice-level question "for each patient, how many shockwave and magnet ses
 | Last visit | Latest `Encounter` with status `finished` | Booked or cancelled appointments are not visits. |
 | Injections in the last 12 months, and the last one | `Procedure` with an injection CPT code (20610, 20611, 20552, 20553, 64483, 62323), `MedicationAdministration` of a listed drug by a listed route, and note phrases | A flu shot given IM is not on the drug list, so it isn't counted. The window is `lookback_days`. |
 
+A record that looks like a session but doesn't meet the rule sheet is kept as a "not counted" near miss and listed on the patient page with the reason: a negated or planned note phrase (with the word that blocked it), or a drug outside the list given by a listed route. Only the reason and the source reference are stored, not the note text or the drug name, so opening the source is how staff see the record itself. A near miss on a day that already counts isn't shown, because it doesn't change the count.
+
 How reliable the counts are depends on how consistently the practice codes these treatments. When they're coded, the counts come straight from the coded records. When some live only in free text, the phrase list fills the gap and the dashboard shows which sessions came from notes, so the clinical team can see how much the count leans on them.
 
 ## Design decisions
@@ -98,9 +100,9 @@ How reliable the counts are depends on how consistently the practice codes these
 
 ## Using a model for phrase matching (optional)
 
-The default matcher (`MATCHER=phrase-list`) is deterministic and runs offline. It normalizes clinical shorthand (RTC, f/u, wk/wks, mo/mos, number words) and skips negated or planned mentions within the same sentence.
+The default matcher (`MATCHER=phrase-list`) is deterministic and runs offline. It normalizes clinical shorthand (RTC, f/u, wk/wks, mo/mos, number words) and skips negated or planned mentions within the same sentence, reporting skipped session phrases as "not counted" with the word that blocked them.
 
-`MATCHER=claude` sends each note to the Anthropic API (`LLM_MODEL`, default `claude-opus-5-5`) with the catalog and a strict JSON schema. Only point it at an endpoint covered by a BAA, and never at real patient data in this demo. Only the first-party client is wired here. Running it through another BAA-covered host, such as Amazon Bedrock, means swapping the client, which this demo doesn't do. The tests use a stub client, so live model calls are not exercised in the test suite or in CI.
+`MATCHER=claude` sends each note to the Anthropic API (`LLM_MODEL`, default `claude-opus-5-5`) with the catalog and a strict JSON schema. Only point it at an endpoint covered by a BAA, and never at real patient data in this demo. Only the first-party client is wired here. Running it through another BAA-covered host, such as Amazon Bedrock, means swapping the client, which this demo doesn't do. The model matcher reports only what a note documents, so with it the "not counted" list holds medication near misses only. The tests use a stub client, so live model calls are not exercised in the test suite or in CI.
 
 ## Scripted patients
 
@@ -117,10 +119,10 @@ The first thirteen patients are scripted, and `verify-demo` (and the test suite)
 | p-0007 | Imogen Delacroix-Watts | Note says "RTC 4 wks" 52 days ago, no visit since. |
 | p-0008 | Cornelius Abernathy | Two rules fire. The higher priority one leads and the other is listed. |
 | p-0009 | Thaddeus Nakamura-Byrne | Active diagnosis but no visit on record, so no fact to cite. Dropped. |
-| p-0010 | Wilhelmina Osei | "Declined shockwave session today": negation, not counted. |
+| p-0010 | Wilhelmina Osei | "Declined shockwave session today": negation, not counted, and listed as not counted with the reason. |
 | p-0011 | Ambrose Kettleworth | Deceased on the chart. |
 | p-0012 | Esperanza Lindqvist | Discharged from care. |
-| p-0013 | Florian Pettigrew | Flu shot (IM) not counted as an injection. Two trigger-point injections are. |
+| p-0013 | Florian Pettigrew | Flu shot (IM) not counted as an injection, and listed as not counted. Two trigger-point injections are. |
 
 ## Things to try
 

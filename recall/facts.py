@@ -15,6 +15,10 @@ VISIT = "visit"
 CONDITION = "condition"
 APPOINTMENT = "appointment"
 RETURN_REQUEST = "return_request"
+# Something that looked like a session but didn't count: a negated or planned note phrase, or a drug outside
+# the signed list given by a signed route. `code` holds the modality key and `detail` the reason. Only the
+# reason and the source reference are kept, never the note text or the drug name.
+NOT_COUNTED = "not_counted"
 
 # Source types
 CODED = "coded"            # a coded FHIR resource (Procedure, MedicationAdministration, Encounter, ...)

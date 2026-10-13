@@ -85,12 +85,13 @@ STORY: dict[str, dict] = {
                "why": "two rules fire; the higher priority one leads"},
     "p-0009": {"name": "Thaddeus Nakamura-Byrne", "dropped": "LAPSED_ACTIVE_CARE",
                "why": "active diagnosis but no visit on record, so no fact to cite; dropped"},
-    "p-0010": {"name": "Wilhelmina Osei", "flag": None, "shockwave": 0,
-               "why": "note says 'declined shockwave session'; negation is not counted"},
+    "p-0010": {"name": "Wilhelmina Osei", "flag": None, "shockwave": 0, "not_counted": {"shockwave": 1},
+               "why": "note says 'declined shockwave session'; negation is not counted, and shown as not counted"},
     "p-0011": {"name": "Ambrose Kettleworth", "suppressed": "deceased", "why": "deceased on the chart"},
     "p-0012": {"name": "Esperanza Lindqvist", "suppressed": "discharged", "why": "discharged from care"},
-    "p-0013": {"name": "Florian Pettigrew", "flag": None, "injections_12mo": 2,
-               "why": "flu shot (IM) is not on the medication list, so it is not counted as an injection"},
+    "p-0013": {"name": "Florian Pettigrew", "flag": None, "injections_12mo": 2, "not_counted": {"injection": 1},
+               "why": "flu shot (IM) is not on the medication list, so it is not counted as an injection; the "
+                      "lidocaine given on a counted injection day is not shown as a near miss"},
 }
 
 

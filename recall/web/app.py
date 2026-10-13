@@ -254,7 +254,7 @@ def create_app(settings: Settings | None = None, session_factory: sessionmaker |
         rows = []
         for p in s.scalars(select(PatientRow).where(PatientRow.run_id == run.id).order_by(PatientRow.patient_id)):
             m = measures(facts.get(p.patient_id, []), sheet, run.as_of)
-            if not include_all and not (m.shockwave or m.magnet or m.injections_12mo):
+            if not include_all and not (m.shockwave or m.magnet or m.injections_12mo or m.not_counted):
                 continue
             rows.append((p, m, names.get(p.provider_ref, p.provider_ref), flagged.get(p.patient_id),
                          held.get(p.patient_id)))
