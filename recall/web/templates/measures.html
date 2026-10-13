@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Patient measures · Follow-up Recall{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Patient measures</h1>
+    <p class="sub">For each patient: shockwave and magnetic therapy sessions, last visit, and injections in the last {{ sheet.lookback_days }} days. Counts are distinct treatment days from coded data, with signed note phrases filling gaps where a session wasn't coded. Run #{{ run.id }}, as of {{ run.as_of|d }}.</p>
+  </div>
+  <a class="btn" href="/measures.csv{{ '?all=1' if show_all }}">Download (CSV)</a>
+</div>
+<div class="tabs">
+  <a href="/measures" class="{{ 'active' if not show_all }}">Patients with any of these treatments</a>
+  <a href="/measures?all=1" class="{{ 'active' if show_all }}">All patients</a>
+</div>
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Patient</th><th>Provider</th><th class="num">Shockwave</th><th>Last shockwave</th><th class="num">Magnet</th><th>Last magnet</th><th>Last visit</th><th class="num">Injections, 12 mo</th><th>Last injection</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for p, m, prov, flag, held in rows %}
+      <tr>
+        <td class="nowrap"><a class="strong" href="/patients/{{ p.patient_id }}">{{ p.given_name }} {{ p.family_name }}</a><br><span class="secondary mono">{{ p.patient_id }}</span></td>
+        <td class="secondary">{{ prov }}</td>
+        <td class="num strong">{{ m.shockwave|length }}{% if m.shockwave|selectattr('from_note_only')|list %}<span class="badge note_match" title="includes sessions found only in notes" style="margin-left:4px">note</span>{% endif %}</td>
+        <td class="nowrap">{{ m.last_shockwave.on|d if m.last_shockwave else '—' }}</td>
+        <td class="num strong">{{ m.magnet|length }}</td>
+        <td class="nowrap">{{ m.last_magnet.on|d if m.last_magnet else '—' }}</td>
+        <td class="nowrap">{{ m.last_visit.on|d if m.last_visit else '—' }}</td>
+        <td class="num strong">{{ m.injections_12mo|length }}</td>
+        <td class="nowrap">{{ m.last_injection.on|d if m.last_injection else '—' }}</td>
+        <td>{% if flag %}{{ ui.priority(flag.priority) }}{% elif held %}<span class="badge grey">Held</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+<p class="footer-note">{{ rows|length }} patients shown.</p>
+{% endblock %}

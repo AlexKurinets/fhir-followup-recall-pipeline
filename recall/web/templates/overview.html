@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Overview · Follow-up Recall{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Overview</h1>
+    {% if run %}
+    <p class="sub">Latest run #{{ run.id }} as of {{ run.as_of|d }}, started {{ run.started_at|t }} by {{ run.actor }}.
+      Rule sheet {{ run.rule_version }} <span class="mono faint">{{ run.rule_sha256[:10] }}</span>, matcher <span class="mono">{{ run.matcher }}</span>.</p>
+    {% else %}
+    <p class="sub">No runs yet.</p>
+    {% endif %}
+  </div>
+  <form method="post" action="/runs" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Running…'">
+    <button class="btn primary" type="submit">Start a run</button>
+  </form>
+</div>
+
+{% if just_ran %}
+  {% if just_ran.status == 'ok' %}
+  <div class="alert success">Run #{{ just_ran.id }} finished in {{ just_ran.stats.duration_s }} s: {{ just_ran.stats.patients_read }} patients read, {{ just_ran.stats.flagged }} flagged, {{ just_ran.stats.suppressed }} held back, {{ just_ran.stats.dropped_no_fact }} dropped for lack of a source fact.</div>
+  {% else %}
+  <div class="alert error">Run #{{ just_ran.id }} failed: {{ just_ran.error }}. Nothing from it reached the worklist; the previous run is still shown.</div>
+  {% endif %}
+{% endif %}
+
+{% if sheet_error %}
+<div class="alert error">config/rules.yaml can't be loaded: {{ sheet_error }}</div>
+{% elif run and sheet and sheet.sha256 != run.rule_sha256 %}
+<div class="alert warn">config/rules.yaml has changed since run #{{ run.id }} (<span class="mono">{{ run.rule_sha256[:10] }}</span> → <span class="mono">{{ sheet.sha256[:10] }}</span>). Start a run to apply it.</div>
+{% endif %}
+
+{% if run %}
+{% set st = run.stats %}
+<div class="tiles">
+  <div class="tile"><div class="label">Patients read</div><div class="value">{{ st.patients_read|n }}</div><div class="hint">{{ st.facts|n }} facts kept</div></div>
+  <div class="tile accent"><div class="label">On the worklist</div><div class="value">{{ st.flagged|n }}</div><div class="hint">{{ st.channels.get('sms', 0) }} SMS · {{ st.channels.get('call', 0) }} call</div></div>
+  <div class="tile"><div class="label">Held back</div><div class="value">{{ st.suppressed|n }}</div><div class="hint">met a rule, suppressed</div></div>
+  <div class="tile"><div class="label">Dropped</div><div class="value">{{ st.dropped_no_fact|n }}</div><div class="hint">no source fact to cite</div></div>
+  <div class="tile"><div class="label">Notes scanned</div><div class="value">{{ st.notes_scanned|n }}</div><div class="hint">text not stored</div></div>
+  <div class="tile"><div class="label">Run time</div><div class="value">{{ st.duration_s }}<span style="font-size:15px"> s</span></div><div class="hint">{{ st.fhir_requests }} FHIR requests</div></div>
+</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Where each resource comes from</h2>
+    <div class="table-wrap">
+    <table class="compact">
+      <thead><tr><th>Resource</th><th>Source</th><th>Fields requested</th></tr></thead>
+      <tbody>
+      {% for rt, c in run.coverage.items() %}
+        <tr>
+          <td class="strong">{{ rt }}</td>
+          <td><span class="badge {{ c.source }}">{{ {'fhir': 'FHIR API', 'export': 'Staff export', 'unavailable': 'Not available'}[c.source] }}</span></td>
+          <td class="mono secondary">{% if c.elements %}{{ c.elements|replace(',', ', ') }}{% elif c.source == 'export' %}{{ fieldmap.export_columns.values()|join(', ') }}{% else %}{{ c.error or '—' }}{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="secondary muted" style="margin:12px 0 0">The source of each resource comes from the server's CapabilityStatement at the start of every run. When a resource isn't exposed over FHIR, the pipeline falls back to the staff export for it. Not requested at all:
+      {% for rt, why in fieldmap.not_requested.items() %}<span class="mono">{{ rt }}</span> ({{ why }}){{ '; ' if not loop.last else '.' }}{% endfor %}</p>
+  </div>
+
+  <div class="card">
+    <h2>Access</h2>
+    <dl class="kv">
+      <dt>Client</dt><dd class="mono">{{ run.token.client_id }}</dd>
+      <dt>Auth</dt><dd>SMART backend services, signed JWT assertion (RS384)</dd>
+      <dt>Token endpoint</dt><dd class="mono">{{ run.token.token_url }}</dd>
+      <dt>Token lifetime</dt><dd>{{ run.token.lifetime_seconds }} s · {{ run.token.tokens_issued }} issued this run</dd>
+      <dt>Scopes granted</dt><dd>{% for sc in (run.token.scope or '').split() %}<span class="chip mono" style="padding-left:8px">{{ sc }}</span>{% endfor %}</dd>
+      <dt>Writes</dt><dd>None. The gateway rejects anything other than GET.</dd>
+    </dl>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card">
+    <h2>On the worklist, by leading reason</h2>
+    <table class="compact">
+      <tbody>
+      {% for rid, n in st.flagged_by_rule.items()|sort(attribute='1', reverse=True) %}
+        <tr><td><a href="/worklist?rule={{ rid }}">{{ rule_labels.get(rid, rid) }}</a></td><td class="num strong">{{ n }}</td>
+          <td style="width:40%"><div class="bar"><span style="width:{{ (100 * n / st.flagged)|round(1) if st.flagged else 0 }}%"></span></div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Held back, by reason</h2>
+    <table class="compact">
+      <tbody>
+      {% for reason, n in st.suppressed_by_reason.items()|sort(attribute='1', reverse=True) %}
+        <tr><td>{{ SUPPRESSION_LABELS.get(reason, reason) }}</td><td class="num strong">{{ n }}</td></tr>
+      {% else %}
+        <tr><td class="muted">Nothing held back.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px">
+  <h2>Run history</h2>
+  <div class="table-wrap">
+  <table class="compact">
+    <thead><tr><th>Run</th><th>Started</th><th>By</th><th>Rule sheet</th><th>Matcher</th><th class="num">Read</th><th class="num">Flagged</th><th class="num">Held</th><th class="num">Dropped</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td class="strong">#{{ r.id }}</td>
+        <td class="nowrap">{{ r.started_at|t }}</td>
+        <td>{{ r.actor }}</td>
+        <td>{{ r.rule_version }} <span class="mono faint">{{ r.rule_sha256[:10] }}</span></td>
+        <td class="mono">{{ r.matcher }}</td>
+        <td class="num">{{ r.stats.get('patients_read', '—') }}</td>
+        <td class="num">{{ r.stats.get('flagged', '—') }}</td>
+        <td class="num">{{ r.stats.get('suppressed', '—') }}</td>
+        <td class="num">{{ r.stats.get('dropped_no_fact', '—') }}</td>
+        <td>{% if r.status == 'ok' %}<span class="badge ok">ok</span>{% elif r.status == 'failed' %}<span class="badge p1" title="{{ r.error }}">failed</span>{% else %}<span class="badge grey">{{ r.status }}</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="muted">No runs yet. Start one above.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

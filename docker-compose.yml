@@ -1,0 +1,99 @@
+name: recall-demo
+
+# docker compose up --build
+#   dashboard:  http://localhost:8080
+#   gateway:    http://localhost:8081/fhir/metadata   (the FHIR server itself is not published)
+
+services:
+  fhir:
+    image: hapiproject/hapi:v7.4.0
+    environment:
+      hapi.fhir.fhir_version: R4
+      # Paging links must point at the gateway, so every page request is token-checked too.
+      hapi.fhir.server_address: http://gateway:8000/fhir/
+      hapi.fhir.default_page_size: "200"
+      hapi.fhir.max_page_size: "500"
+    restart: unless-stopped
+
+  seed:
+    build: .
+    command: ["python", "-m", "seed", "load", "--fhir", "http://fhir:8080/fhir", "--export-dir", "/data/exports"]
+    environment:
+      AS_OF: ${AS_OF:-}
+    volumes:
+      - exports:/data/exports
+    depends_on:
+      - fhir
+    restart: "no"
+
+  gateway:
+    build: .
+    command: ["uvicorn", "gateway.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      UPSTREAM_FHIR: http://fhir:8080/fhir
+      PUBLIC_BASE_URL: http://gateway:8000
+      CLIENT_ID: recall-pipeline
+      CLIENT_PUBLIC_KEY_PATH: /keys/client_public.pem
+      TOKEN_TTL_SECONDS: ${TOKEN_TTL_SECONDS:-300}
+      # Resources the simulated tenant does not expose over FHIR. Set to "" to serve everything.
+      HIDDEN_RESOURCES: ${HIDDEN_RESOURCES-Appointment}
+    volumes:
+      - keys:/keys:ro
+    ports:
+      - "8081:8000"
+    depends_on:
+      - fhir
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: recall
+      POSTGRES_PASSWORD: recall-local-only
+      POSTGRES_DB: recall
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recall -d recall"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build: .
+    command: ["sh", "-c", "python -m recall keys --dir /keys && uvicorn recall.web.app:get_app --factory --host 0.0.0.0 --port 8000"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://recall:recall-local-only@db:5432/recall
+      FHIR_BASE_URL: http://gateway:8000/fhir
+      TOKEN_URL: http://gateway:8000/auth/token
+      CLIENT_ID: recall-pipeline
+      CLIENT_KEY_DIR: /keys
+      EXPORT_PATH: /data/exports/appointments.csv
+      RULES_PATH: /app/config/rules.yaml
+      FIELDMAP_PATH: /app/config/fieldmap.yaml
+      DEMO_ACTOR: ${DEMO_ACTOR:-dana.reyes@example.com}
+      AS_OF: ${AS_OF:-}
+      MATCHER: ${MATCHER:-phrase-list}
+      LLM_MODEL: ${LLM_MODEL:-claude-opus-5-5}
+      RETAIN_RUNS: ${RETAIN_RUNS:-5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - keys:/keys
+      - exports:/data/exports:ro
+      - ./config:/app/config:ro      # edit config/rules.yaml on the host, then start a run
+    ports:
+      - "8080:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+      seed:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  keys:
+  exports:
+  pgdata:

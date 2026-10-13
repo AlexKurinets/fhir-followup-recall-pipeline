@@ -1,0 +1,50 @@
+# Minimum-necessary field map.
+#
+# `requests` is what the pipeline asks the FHIR server for. The keys become the OAuth scopes the
+# client requests (system/<Type>.read), and the element lists are sent as `_elements`, so fields
+# outside this list do not leave the EHR. The extractor applies the same list again in code, in
+# case a server ignores `_elements`.
+#
+# `storage` is the complete list of columns that can hold patient-level data. A test fails if a
+# table gains a column that is not listed here.
+
+requests:
+  Patient: [name, telecom, generalPractitioner, deceased, extension]
+  Practitioner: [name]
+  Encounter: [subject, status, period, type]
+  Procedure: [subject, status, code, performed]
+  MedicationAdministration: [subject, status, medication, effective, dosage]
+  Condition: [subject, clinicalStatus, code, onset, recordedDate]
+  DocumentReference: [subject, date, content]   # note text is read in memory for phrase matching and never stored
+  Appointment: [participant, status, start]
+
+# Resources that are deliberately not requested. Adding a rule that needs one of them means adding
+# it to `requests` above, which widens the token's scopes; that change goes through review.
+not_requested:
+  ServiceRequest: no signed rule uses imaging or referral orders yet
+  Observation: vitals and scores are not used by any rule
+  Coverage: insurance is not needed to decide who to call
+
+# Staff-run appointment export, used when Appointment is not available over FHIR.
+appointment_export:
+  columns:
+    appointment_id: Appointment ID
+    patient_id: Patient Account
+    date: Appt Date
+    time: Appt Time
+    provider: Provider
+    status: Status
+  status_map:
+    Checked Out: fulfilled
+    Arrived: arrived
+    Scheduled: booked
+    Confirmed: booked
+    No Show: noshow
+    Cancelled: cancelled
+
+storage:
+  patients: [run_id, patient_id, given_name, family_name, phone, provider_ref, deceased, sms_consent,
+             chart_do_not_contact, care_status]
+  facts: [id, run_id, patient_id, kind, "on", status, code, code_system, display, source_type, source_ref,
+          detail]
+  practitioners: [run_id, practitioner_id, display_name]

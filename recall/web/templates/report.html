@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Pilot report · Follow-up Recall{% endblock %}
+{% block content %}
+{% set st = run.stats %}
+<div class="page-head">
+  <div>
+    <h1>Pilot report</h1>
+    <p class="sub">Run #{{ run.id }} as of {{ run.as_of|d }}, rule sheet {{ run.rule_version }} <span class="mono faint">{{ run.rule_sha256[:10] }}</span>. Outreach outcomes are the latest logged for each patient on this run's worklist.</p>
+  </div>
+</div>
+<div class="tiles">
+  <div class="tile accent"><div class="label">Flagged</div><div class="value">{{ flagged }}</div><div class="hint">of {{ st.patients_read }} patients read</div></div>
+  <div class="tile"><div class="label">Held back</div><div class="value">{{ st.suppressed }}</div><div class="hint">suppressed by a rule</div></div>
+  <div class="tile"><div class="label">Worked</div><div class="value">{{ worked }}</div><div class="hint">outcome logged</div></div>
+  <div class="tile"><div class="label">Reached</div><div class="value">{{ outcomes.get('reached', 0) + outcomes.get('booked', 0) }}</div><div class="hint">incl. booked</div></div>
+  <div class="tile"><div class="label">Booked</div><div class="value">{{ outcomes.get('booked', 0) }}</div><div class="hint">{{ ((100 * outcomes.get('booked', 0) / flagged)|round(1)) if flagged else 0 }}% of flagged</div></div>
+  <div class="tile"><div class="label">Not yet worked</div><div class="value">{{ flagged - worked }}</div><div class="hint">no outcome logged</div></div>
+</div>
+<div class="grid grid-3">
+  <div class="card">
+    <h2>Flagged, by leading reason</h2>
+    <table class="compact"><tbody>
+    {% for rid, n in st.flagged_by_rule.items()|sort(attribute='1', reverse=True) %}<tr><td>{{ rule_labels.get(rid, rid) }}</td><td class="num strong">{{ n }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h2>Held back, by reason</h2>
+    <table class="compact"><tbody>
+    {% for reason, n in st.suppressed_by_reason.items()|sort(attribute='1', reverse=True) %}<tr><td>{{ SUPPRESSION_LABELS.get(reason, reason) }}</td><td class="num strong">{{ n }}</td></tr>{% endfor %}
+    <tr><td>Dropped, no source fact</td><td class="num strong">{{ st.dropped_no_fact }}</td></tr>
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h2>Outreach outcomes</h2>
+    <table class="compact"><tbody>
+    {% for o, label in DISPOSITION_LABELS.items() %}<tr><td>{{ label }}</td><td class="num strong">{{ outcomes.get(o, 0) }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</div>
+<div class="card" style="margin-top:16px">
+  <h2>Data quality this run</h2>
+  <dl class="kv">
+    <dt>Notes scanned</dt><dd>{{ st.notes_scanned|n }} (text held in memory for matching, not stored)</dd>
+    <dt>Matcher errors</dt><dd>{{ st.matcher_errors }} (a failed match is treated as no match and counted here)</dd>
+    <dt>Undated records skipped</dt><dd>{{ st.rejected_undated }}</dd>
+    <dt>Records for unknown patients</dt><dd>{{ st.orphan_facts }}</dd>
+    <dt>Export rows with an unmapped status</dt><dd>{{ st.export_unmapped_status }}</dd>
+  </dl>
+</div>
+{% endblock %}

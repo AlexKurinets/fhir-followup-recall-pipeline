@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card empty">
+  <h1>No runs yet</h1>
+  {% if error %}<p class="sub">{{ error }}</p>{% endif %}
+  <p class="sub">Start the first run to read the chart data and build the worklist.</p>
+  <form method="post" action="/runs" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Running…'">
+    <button class="btn primary" type="submit">Start a run</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% macro source_link(f) -%}
+  {%- if f.source_ref and f.source_ref.startswith('export:') -%}
+    <a class="mono" href="/source/export/{{ f.source_ref.split('#')[1] }}">{{ f.source_ref.split(':', 1)[1] }}</a>
+  {%- elif f.source_ref -%}
+    <a class="mono" href="/source/{{ f.source_ref.split('#')[0] }}">{{ f.source_ref.split('#')[0] }}</a>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro evidence_chip(f) -%}
+  <span class="chip"><span class="badge {{ f.source_type }}">{{ SOURCE_LABELS.get(f.source_type, f.source_type) }}</span>{{ source_link(f) }}</span>
+{%- endmacro %}
+
+{% macro priority(p) -%}
+  <span class="badge p{{ p }}">P{{ p }}</span>
+{%- endmacro %}
+
+{% macro channel(c) -%}
+  <span class="badge {{ c }}">{{ 'SMS' if c == 'sms' else 'Call' }}</span>
+{%- endmacro %}
+
+{% macro fact_table(facts) -%}
+<div class="table-wrap">
+<table class="compact">
+  <thead><tr><th>Date</th><th>What</th><th>Code</th><th>Source</th></tr></thead>
+  <tbody>
+  {% for f in facts %}
+    <tr>
+      <td class="nowrap">{{ f.on|d }}</td>
+      <td>{{ f.display or f.kind }}{% if f.status %} <span class="faint">({{ f.status }})</span>{% endif %}</td>
+      <td class="mono">{{ f.code or '' }}</td>
+      <td>{{ evidence_chip(f) }}{% if f.detail and f.source_type == 'note_match' %}<span class="faint">{{ f.detail }}</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{%- endmacro %}
+
+{% macro session_table(sessions) -%}
+<div class="table-wrap">
+<table class="compact">
+  <thead><tr><th>Session date</th><th>Documented by</th></tr></thead>
+  <tbody>
+  {% for s in sessions|reverse %}
+    <tr>
+      <td class="nowrap">{{ s.on|d }}{% if s.from_note_only %} <span class="badge note_match">note only</span>{% endif %}</td>
+      <td>{% for f in s.facts %}{{ evidence_chip(f) }} <span class="secondary">{{ f.display }}</span><br>{% endfor %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="2" class="muted">None on record.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{%- endmacro %}

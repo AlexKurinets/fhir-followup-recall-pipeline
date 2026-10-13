@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ ref }} · Follow-up Recall{% endblock %}
+{% block content %}
+{% if patient_id %}<p class="secondary"><a href="/patients/{{ patient_id }}">← Back to patient</a></p>{% endif %}
+<div class="page-head">
+  <div>
+    <h1 class="mono" style="font-size:19px">{{ ref }}</h1>
+    <p class="sub">{% if origin == 'fhir' %}Fetched live from the FHIR server through the gateway, with a fresh short-lived token. Nothing here was stored by the pipeline.{% else %}The row from the staff-run appointment export, limited to the columns in the field map.{% endif %}
+      This view was written to the <a href="/audit?action=source_viewed">access log</a> as <span class="mono">source_viewed</span> by {{ actor }}.</p>
+  </div>
+</div>
+{% if error %}<div class="alert error">Couldn't fetch this record: {{ error }}</div>{% endif %}
+{% if note_text %}
+<h3>Note text</h3>
+<pre class="note">{{ note_text }}</pre>
+{% endif %}
+{% if body %}
+<h3 style="margin-top:16px">{{ 'Resource' if origin == 'fhir' else 'Row' }}</h3>
+<pre class="json">{{ body }}</pre>
+{% endif %}
+{% endblock %}

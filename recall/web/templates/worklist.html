@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Worklist · Follow-up Recall{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Call-center worklist</h1>
+    <p class="sub">Run #{{ run.id }} as of {{ run.as_of|d }}. One row per patient, sorted by priority and then by how overdue they are. Each row cites the chart facts that put it here.</p>
+  </div>
+  <a class="btn" href="/worklist.csv{{ '?provider=' ~ provider if provider }}">Download queue (CSV)</a>
+</div>
+
+<div class="toolbar">
+  <div class="tabs">
+    <a href="/worklist" class="{{ 'active' if not provider }}">All<span class="count">{{ total }}</span></a>
+    {% for pid, name in provider_names.items() %}
+    <a href="/worklist?provider={{ pid }}" class="{{ 'active' if provider == pid }}">{{ name }}<span class="count">{{ counts.get(pid, 0) }}</span></a>
+    {% endfor %}
+  </div>
+  <form method="get" action="/worklist">
+    {% if provider %}<input type="hidden" name="provider" value="{{ provider }}">{% endif %}
+    <input type="search" name="q" value="{{ q or '' }}" placeholder="Find a patient by name or id">
+  </form>
+</div>
+{% if rule %}<div class="alert info">Showing rows led by <span class="mono">{{ rule }}</span>. <a href="/worklist{{ '?provider=' ~ provider if provider }}">Show all reasons</a></div>{% endif %}
+
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th></th><th>Patient</th><th>Reason</th><th>Evidence</th><th class="num">Overdue</th><th>Contact</th><th>Last outcome</th></tr></thead>
+    <tbody>
+    {% for f, p in rows %}
+      <tr>
+        <td>{{ ui.priority(f.priority) }}</td>
+        <td class="nowrap"><a class="strong" href="/patients/{{ p.patient_id }}">{{ p.given_name }} {{ p.family_name }}</a><br>
+          <span class="secondary mono">{{ p.patient_id }}</span> <span class="secondary">· {{ provider_names.get(f.provider_ref, f.provider_ref) }}</span></td>
+        <td class="reason"><span class="strong">{{ f.rule_label }}</span><br><span class="secondary">{{ f.summary }}</span>
+          {% if f.also %}<br><span class="secondary">Also: {{ f.also|map(attribute='label')|join('; ') }}</span>{% endif %}</td>
+        <td>{% for fid in f.evidence[:3] %}{% if fid in facts %}{{ ui.evidence_chip(facts[fid]) }}{% endif %}{% endfor %}
+          {% if f.evidence|length > 3 %}<span class="faint">+{{ f.evidence|length - 3 }} more</span>{% endif %}</td>
+        <td class="num nowrap">{{ f.overdue_days }} d</td>
+        <td class="nowrap">{{ ui.channel(f.channel) }}<br><span class="secondary">{{ p.phone or 'no phone' }}</span></td>
+        <td>{% set d = dispositions.get(p.patient_id) %}{% if d %}<span class="badge grey">{{ DISPOSITION_LABELS[d.outcome] }}</span><br><span class="secondary">{{ d.at|t }}</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="muted" style="padding:24px">No patients on the worklist for this view.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

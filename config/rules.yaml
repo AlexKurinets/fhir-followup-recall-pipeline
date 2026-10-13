@@ -1,0 +1,164 @@
+# Follow-up rule sheet.
+#
+# This is a DRAFT used to exercise the pipeline on synthetic data. Every interval, code list and
+# phrase below is a placeholder for the clinical lead to replace and sign. Nothing here is
+# clinical guidance.
+#
+# Edit this file and start a new run from the dashboard: the run records the version and a hash
+# of this file, so every flag can be traced to the exact rule sheet that produced it.
+
+version: "draft-3"
+status: DRAFT
+signed_by: ""            # filled in when the clinical lead signs off
+lookback_days: 365       # the "last 12 months" window used for counts
+
+# A visit is a finished Encounter. "No visit since X" checks use this definition.
+visit:
+  encounter_statuses: [finished]
+
+# What counts as one session of each treatment. Sessions are counted as distinct days, so the
+# same injection documented as a Procedure and as a MedicationAdministration counts once.
+modalities:
+  shockwave:
+    label: Shockwave session
+    procedure_codes:
+      - system: http://www.ama-assn.org/go/cpt
+        code: "0101T"
+        display: ESWT, high energy, musculoskeletal
+      - system: https://example.com/fhir/CodeSystem/practice-procedure
+        code: PX-RSWT
+        display: Radial shockwave session (practice code)
+    note_phrases:
+      - shockwave session
+      - eswt session
+      - radial shockwave
+
+  magnet:
+    label: Magnetic therapy session
+    procedure_codes:
+      - system: https://example.com/fhir/CodeSystem/practice-procedure
+        code: PX-EMTT
+        display: Magnetotransduction therapy session (practice code)
+      - system: https://example.com/fhir/CodeSystem/practice-procedure
+        code: PX-PEMF
+        display: PEMF session (practice code)
+    note_phrases:
+      - emtt session
+      - magnet therapy session
+      - pemf session
+
+  injection:
+    label: Injection
+    procedure_codes:
+      - system: http://www.ama-assn.org/go/cpt
+        code: "20610"
+        display: Arthrocentesis/injection, major joint, without ultrasound
+      - system: http://www.ama-assn.org/go/cpt
+        code: "20611"
+        display: Arthrocentesis/injection, major joint, with ultrasound
+      - system: http://www.ama-assn.org/go/cpt
+        code: "20552"
+        display: Trigger point injection, 1-2 muscles
+      - system: http://www.ama-assn.org/go/cpt
+        code: "20553"
+        display: Trigger point injection, 3+ muscles
+      - system: http://www.ama-assn.org/go/cpt
+        code: "64483"
+        display: Transforaminal epidural, lumbar/sacral, single level
+      - system: http://www.ama-assn.org/go/cpt
+        code: "62323"
+        display: Interlaminar epidural, lumbar/sacral, with imaging
+    medication_administration:
+      medications: [triamcinolone, methylprednisolone, betamethasone, dexamethasone, hyaluronate]
+      routes:
+        - system: http://snomed.info/sct
+          code: "12130007"
+          display: Intra-articular route
+        - system: http://snomed.info/sct
+          code: "78421000"
+          display: Intramuscular route
+        - system: http://snomed.info/sct
+          code: "404820008"
+          display: Epidural route
+    note_phrases:
+      - injection performed
+      - injected under ultrasound
+
+# Phrases a provider writes when they want the patient back. Matching ignores case, punctuation,
+# "in"/"about", and expands RTC, f/u, wk(s), mo(s) and number words, so "RTC 4 wks" and
+# "Return to clinic in four weeks" both match "return to clinic 4 weeks".
+return_requests:
+  - id: RTC_2W
+    interval_days: 14
+    phrases: [return to clinic 2 weeks, follow up 2 weeks, return 2 weeks, recheck 2 weeks]
+  - id: RTC_4W
+    interval_days: 28
+    phrases: [return to clinic 4 weeks, follow up 4 weeks, return 4 weeks, recheck 4 weeks]
+  - id: RTC_6W
+    interval_days: 42
+    phrases: [return to clinic 6 weeks, follow up 6 weeks, return 6 weeks, recheck 6 weeks]
+  - id: RTC_3M
+    interval_days: 90
+    phrases: [return to clinic 3 months, follow up 3 months, return 3 months, recheck 3 months]
+
+# Rules run in this order. A patient who meets several gets one row: the lowest priority number
+# wins, and the others are listed as additional reasons.
+rules:
+  - id: POST_INJECTION_FOLLOWUP
+    kind: post_event_followup
+    label: Post-injection follow-up not done
+    priority: 1
+    modality: injection
+    due_after_days: 28        # follow-up expected within 4 weeks of the injection
+    stale_after_days: 180     # older than this is a reactivation conversation, not a follow-up
+
+  - id: PROVIDER_RETURN_REQUEST
+    kind: return_request
+    label: Provider asked for a return visit
+    priority: 1
+    grace_days: 7
+    stale_after_days: 180
+
+  - id: SHOCKWAVE_SERIES_INCOMPLETE
+    kind: series_incomplete
+    label: Shockwave series stopped early
+    priority: 2
+    modality: shockwave
+    series_target: 4
+    series_window_days: 120
+    due_after_days: 14
+
+  - id: MAGNET_SERIES_INCOMPLETE
+    kind: series_incomplete
+    label: Magnetic therapy series stopped early
+    priority: 2
+    modality: magnet
+    series_target: 8
+    series_window_days: 120
+    due_after_days: 10
+
+  - id: MISSED_NOT_RESCHEDULED
+    kind: missed_visit
+    label: Missed visit not rescheduled
+    priority: 2
+    lookback_days: 60
+    due_after_days: 14
+
+  - id: LAPSED_ACTIVE_CARE
+    kind: lapsed
+    label: No visit in 90+ days with an active diagnosis
+    priority: 3
+    due_after_days: 90
+    stale_after_days: 365
+    condition_code_prefixes: [M54, M25.5, M72.2, M17, M75, M76, G89]
+
+# A patient who meets a rule is held back from the worklist (and logged as suppressed) when:
+suppress_when:
+  deceased: true
+  chart_do_not_contact: true        # do-not-contact on the chart
+  outreach_do_not_contact: true     # staff logged "do-not-contact" as a disposition
+  discharged: true
+  future_appointment: true          # any booked visit after today
+
+outreach:
+  sms_requires_consent: true        # no consent on the chart means the row is a call task

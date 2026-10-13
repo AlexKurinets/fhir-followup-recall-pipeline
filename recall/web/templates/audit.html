@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Access log · Follow-up Recall{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Access log</h1>
+    <p class="sub">Every read of patient data, by whom and when: each run's pull (one row per patient and resource type), every source record opened from the dashboard, every export, and every outcome logged. {{ total|n }} rows in total; the latest 300 matching rows are shown.</p>
+  </div>
+</div>
+<form class="inline" method="get" action="/audit" style="margin-bottom:12px">
+  <select name="action">
+    <option value="">All actions</option>
+    {% for a in actions %}<option value="{{ a }}" {{ 'selected' if a == action }}>{{ a }}</option>{% endfor %}
+  </select>
+  <input type="text" name="patient" value="{{ patient or '' }}" placeholder="Patient id, e.g. p-0001">
+  <button class="btn" type="submit">Filter</button>
+  {% if action or patient %}<a href="/audit">Clear</a>{% endif %}
+</form>
+<div class="card" style="padding:0">
+  <div class="table-wrap">
+  <table class="compact">
+    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Run</th><th>Patient</th><th>Resource</th><th class="num">Count</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for a in rows %}
+      <tr>
+        <td class="nowrap secondary">{{ a.at|t }}</td>
+        <td class="nowrap">{{ a.actor }}</td>
+        <td class="mono">{{ a.action }}</td>
+        <td>{{ '#' ~ a.run_id if a.run_id else '' }}</td>
+        <td class="mono">{% if a.patient_id %}<a href="/patients/{{ a.patient_id }}">{{ a.patient_id }}</a>{% endif %}</td>
+        <td>{{ a.resource_type or '' }}</td>
+        <td class="num">{{ a.resource_count if a.resource_count is not none else '' }}</td>
+        <td class="secondary">{{ a.detail or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="muted" style="padding:24px">No matching rows.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev,llm]"
+      - run: ruff check .
+      - run: pytest
+
+  compose:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bring up the stack
+        run: docker compose up -d --build
+      - name: Wait for the dashboard
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/healthz >/dev/null; then echo "up after ${i}x5s"; exit 0; fi
+            sleep 5
+          done
+          docker compose ps
+          docker compose logs --tail=80
+          exit 1
+      - name: Gateway refuses unauthenticated reads and writes
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/fhir/Patient)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8081/fhir/Patient)" = "405"
+      - name: Run the pipeline and check the scripted patients
+        run: docker compose exec -T app python -m recall verify-demo
+      - name: Dashboard pages render
+        run: |
+          for path in / /worklist /patients/p-0001 /measures /rules /audit /report; do
+            curl -fsS -o /dev/null "http://localhost:8080${path}" || { echo "failed: ${path}"; exit 1; }
+          done
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

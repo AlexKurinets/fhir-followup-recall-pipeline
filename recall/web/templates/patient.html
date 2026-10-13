@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}{{ p.given_name }} {{ p.family_name }} · Follow-up Recall{% endblock %}
+{% block content %}
+<p class="secondary"><a href="/worklist">← Worklist</a></p>
+<div class="page-head">
+  <div>
+    <h1>{{ p.given_name }} {{ p.family_name }}</h1>
+    <p class="sub"><span class="mono">{{ p.patient_id }}</span> · {{ provider_name }} · {{ p.phone or 'no phone on file' }}
+      &nbsp;{% if p.sms_consent %}<span class="badge sms">SMS consent</span>{% else %}<span class="badge call">No SMS consent</span>{% endif %}
+      {% if p.chart_do_not_contact %}<span class="badge p1">Do not contact</span>{% endif %}
+      {% if p.care_status != 'active' %}<span class="badge grey">{{ p.care_status|capitalize }}</span>{% endif %}
+      {% if p.deceased %}<span class="badge grey">Deceased</span>{% endif %}</p>
+  </div>
+  <span class="secondary muted">Run #{{ run.id }} · as of {{ run.as_of|d }}</span>
+</div>
+
+{% if flag %}
+<div class="card flag-card prio-{{ flag.priority }}">
+  <div class="page-head" style="margin-bottom:8px">
+    <div><h2 style="margin:0">{{ ui.priority(flag.priority) }} {{ flag.rule_label }}</h2>
+      <p class="sub" style="margin:4px 0 0">{{ flag.summary }}. Due {{ flag.due_on|d }}, {{ flag.overdue_days }} days overdue. Contact by {{ ui.channel(flag.channel) }}.</p></div>
+    <span class="mono faint">{{ flag.rule_id }}</span>
+  </div>
+  <h3 style="margin-top:12px">Why: the chart facts behind this flag</h3>
+  {{ ui.fact_table(evidence) }}
+  {% for a, a_facts in also %}
+  <h3 style="margin-top:16px">Also meets: {{ a.label }}</h3>
+  <p class="secondary muted" style="margin:0 0 6px">{{ a.summary }}</p>
+  {{ ui.fact_table(a_facts) }}
+  {% endfor %}
+</div>
+{% elif supp %}
+<div class="card held-card">
+  <h2 style="margin-bottom:4px">Held back: {{ SUPPRESSION_LABELS.get(supp.reason, supp.reason) }}</h2>
+  <p class="sub" style="margin:0 0 8px">{{ supp.detail }}. This patient met the rules below but is not on the worklist.</p>
+  <ul style="margin:0;padding-left:18px">{% for r in supp.rules %}<li><span class="strong">{{ r.label }}</span> <span class="secondary">· {{ r.summary }}</span></li>{% endfor %}</ul>
+</div>
+{% else %}
+<div class="card"><h2 style="margin:0">Not on the worklist</h2><p class="sub" style="margin:4px 0 0">No rule on the current sheet fires for this patient.</p></div>
+{% endif %}
+{% for d in dropped %}
+<div class="alert warn" style="margin-top:16px"><span class="strong">Dropped: {{ d.rule_id }}.</span> {{ d.reason }}. A flag needs a dated chart fact with a source reference, so this one never reached the worklist.</div>
+{% endfor %}
+
+{% if m %}
+<h2 style="margin:24px 0 12px">Treatment measures</h2>
+<div class="grid grid-4">
+  <div class="measure"><div class="label">Shockwave sessions</div><div class="value">{{ m.shockwave|length }}</div>
+    <div class="hint">{% if m.last_shockwave %}Last {{ m.last_shockwave.on|d }}{% else %}None on record{% endif %}
+    {% set note_only = m.shockwave|selectattr('from_note_only')|list|length %}{% if note_only %} · {{ note_only }} from notes only{% endif %}</div></div>
+  <div class="measure"><div class="label">Magnetic therapy sessions</div><div class="value">{{ m.magnet|length }}</div>
+    <div class="hint">{% if m.last_magnet %}Last {{ m.last_magnet.on|d }}{% else %}None on record{% endif %}</div></div>
+  <div class="measure"><div class="label">Last visit</div><div class="value" style="font-size:22px;padding:5px 0 3px">{{ m.last_visit.on|d if m.last_visit else '—' }}</div>
+    <div class="hint">{% if m.last_visit %}{{ (run.as_of - m.last_visit.on).days }} days ago · {{ m.last_visit.display }}{% else %}No finished encounter on record{% endif %}</div></div>
+  <div class="measure"><div class="label">Injections, last 12 months</div><div class="value">{{ m.injections_12mo|length }}</div>
+    <div class="hint">{% if m.last_injection %}Last {{ m.last_injection.on|d }}{% else %}None on record{% endif %}</div></div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <p class="secondary muted" style="margin:0">Sessions are counted as distinct treatment days. A session charted as a Procedure and again as a MedicationAdministration, or also described in the note, counts once, and every source is listed.</p>
+  <details open><summary>Injections ({{ m.injections_12mo|length }} in the last 12 months)</summary>{{ ui.session_table(m.injections_12mo) }}</details>
+  <details {{ 'open' if m.shockwave }}><summary>Shockwave sessions ({{ m.shockwave|length }})</summary>{{ ui.session_table(m.shockwave) }}</details>
+  <details {{ 'open' if m.magnet }}><summary>Magnetic therapy sessions ({{ m.magnet|length }})</summary>{{ ui.session_table(m.magnet) }}</details>
+  <details><summary>Appointments ({{ appts|length }})</summary>{{ ui.fact_table(appts) }}</details>
+</div>
+{% endif %}
+
+<div class="grid grid-2" style="margin-top:16px" id="outreach">
+  <div class="card">
+    <h2>Outreach outcome</h2>
+    <form class="inline" method="post" action="/patients/{{ p.patient_id }}/disposition">
+      <select name="outcome">{% for o in dispositions %}<option value="{{ o }}">{{ DISPOSITION_LABELS[o] }}</option>{% endfor %}</select>
+      <input type="text" name="note" maxlength="300" placeholder="Optional note">
+      <button class="btn primary" type="submit">Log outcome</button>
+    </form>
+    <p class="secondary muted">Outcomes go to the outreach log. Nothing is written back to the chart. A "Do not contact" outcome keeps this patient off future worklists.</p>
+    <table class="compact">
+      <tbody>
+      {% for d in history %}
+        <tr><td class="nowrap">{{ d.at|t }}</td><td><span class="badge grey">{{ DISPOSITION_LABELS[d.outcome] }}</span></td><td class="secondary">{{ d.note or '' }}</td><td class="secondary">{{ d.actor }}</td></tr>
+      {% else %}
+        <tr><td class="muted">No outreach logged yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Access log for this patient</h2>
+    <div class="table-wrap">
+    <table class="compact">
+      <tbody>
+      {% for a in access %}
+        <tr><td class="nowrap secondary">{{ a.at|t }}</td><td><span class="mono">{{ a.action }}</span><br><span class="secondary">{{ a.actor }}</span></td><td>{{ a.resource_type or '' }}{% if a.resource_count %} ×{{ a.resource_count }}{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="secondary"><a href="/audit?patient={{ p.patient_id }}">Full history</a></p>
+  </div>
+</div>
+{% endblock %}

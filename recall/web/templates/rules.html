@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Rule sheet · Follow-up Recall{% endblock %}
+{% block content %}
+{% if error %}<div class="alert error">config/rules.yaml can't be loaded: {{ error }}</div>{% endif %}
+{% if sheet %}
+<div class="page-head">
+  <div>
+    <h1>Rule sheet {{ sheet.version }} {% if sheet.status|upper == 'DRAFT' %}<span class="badge draft">DRAFT</span>{% endif %}</h1>
+    <p class="sub">File <span class="mono">config/rules.yaml</span> · hash <span class="mono">{{ sheet.short_hash }}</span> ·
+      {% if sheet.signed_by %}signed by {{ sheet.signed_by }}{% else %}not yet signed{% endif %}.
+      {% if run and run.rule_sha256 != sheet.sha256 %}<span class="badge p2">changed since run #{{ run.id }}</span>{% elif run %}<span class="badge ok">matches run #{{ run.id }}</span>{% endif %}</p>
+  </div>
+</div>
+<div class="alert info">The intervals, codes and phrases here are placeholders that exercise the pipeline. The clinical lead edits and signs this file. Edit it and start a new run: every run records the hash of the sheet it used.</div>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Rules, in priority order</h2>
+    {% for r, text in described %}
+    <div class="rule-card">
+      <div>{{ ui.priority(r.priority) }}</div>
+      <div>
+        <div class="strong">{{ r.label }} <span class="id">{{ r.id }}</span></div>
+        <div class="muted">{{ text }}</div>
+        <div class="params">{% for k, v in r.params.items() %}<span>{{ k }}: {{ v|join(', ') if v is iterable and v is not string else v }}</span>{% endfor %}</div>
+      </div>
+    </div>
+    {% endfor %}
+    <h3 style="margin-top:16px">Held back when</h3>
+    <ul style="margin:0;padding-left:18px">
+      {% for k, on in sheet.suppress_when.items() if on %}<li>{{ SUPPRESSION_LABELS.get(k, k) }}</li>{% endfor %}
+    </ul>
+    <h3 style="margin-top:16px">Contact channel</h3>
+    <p style="margin:0">{% if sheet.sms_requires_consent %}SMS only with SMS consent on the chart; otherwise the row is a call task.{% else %}SMS for anyone with a phone number.{% endif %}</p>
+  </div>
+
+  <div class="stack">
+    {% for m in sheet.modalities.values() %}
+    <div class="card">
+      <h2>What counts as: {{ m.label|lower }}</h2>
+      {% if m.procedure_codes %}
+      <table class="compact"><tbody>
+        {% for c in m.procedure_codes %}<tr><td class="mono strong nowrap">{{ c.code }}</td><td>{{ c.display }}</td><td class="faint nowrap">{{ 'CPT' if 'ama-assn' in c.system else 'practice code' }}</td></tr>{% endfor %}
+      </tbody></table>
+      {% endif %}
+      {% if m.medications %}
+      <p style="margin:10px 0 0"><span class="strong">MedicationAdministration</span> when the drug is one of <span class="mono">{{ m.medications|join(', ') }}</span> and the route is {{ m.routes|map(attribute='display')|join(', ')|lower }}.</p>
+      {% endif %}
+      {% if m.note_phrases %}
+      <p style="margin:10px 0 0"><span class="strong">Note phrases</span> (not negated, not planned): {% for ph in m.note_phrases %}<span class="chip" style="padding-left:8px">{{ ph }}</span>{% endfor %}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="card">
+      <h2>Return-visit phrases</h2>
+      <table class="compact"><tbody>
+        {% for r in sheet.return_requests %}<tr><td class="mono nowrap">{{ r.id }}</td><td class="nowrap">{{ r.interval_days }} days</td><td class="secondary">{{ r.phrases|join(' · ') }}</td></tr>{% endfor %}
+      </tbody></table>
+      <p class="secondary muted" style="margin:10px 0 0">Matcher in use: <span class="mono">{{ settings.matcher }}</span>. The list matcher expands RTC, f/u, wk(s), mo(s) and number words, so "RTC 4 wks" matches "return to clinic 4 weeks".</p>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>Minimum-necessary field map</h2>
+  <p class="secondary muted" style="margin-top:0">These are the only elements requested from the FHIR server (sent as <span class="mono">_elements</span>), and the token asks only for the matching <span class="mono">system/&lt;Type&gt;.read</span> scopes.</p>
+  <table class="compact"><tbody>
+    {% for rt, els in fieldmap.requests.items() %}<tr><td class="strong">{{ rt }}</td><td class="mono secondary">{{ els|join(', ') }}</td></tr>{% endfor %}
+  </tbody></table>
+  <details><summary>Raw rules.yaml</summary><pre class="yaml">{{ sheet.raw_text }}</pre></details>
+</div>
+{% endif %}
+{% endblock %}

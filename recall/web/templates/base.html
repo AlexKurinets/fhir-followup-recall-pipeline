@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Follow-up Recall{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/"><span class="brand-mark">R</span> Follow-up Recall <small>pain &amp; PT</small></a>
+      <nav class="main">
+        <a href="/" class="{{ 'active' if nav == 'overview' }}">Overview</a>
+        <a href="/worklist" class="{{ 'active' if nav in ('worklist', 'patient') }}">Worklist</a>
+        <a href="/measures" class="{{ 'active' if nav == 'measures' }}">Patient measures</a>
+        <a href="/rules" class="{{ 'active' if nav == 'rules' }}">Rule sheet</a>
+        <a href="/audit" class="{{ 'active' if nav == 'audit' }}">Access log</a>
+        <a href="/report" class="{{ 'active' if nav == 'report' }}">Pilot report</a>
+      </nav>
+      <span class="whoami">{{ actor }}</span>
+    </div>
+  </header>
+  <div class="banner"><div>Demo environment with synthetic patients. A HAPI FHIR server stands in for the EHR's FHIR API, behind a gateway that enforces SMART backend-services tokens and read-only access.</div></div>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
